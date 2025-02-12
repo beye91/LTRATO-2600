@@ -1,0 +1,210 @@
+- name: Retrieve Device and update physical interfaces configuration, add static routes, and deploy configuration
+  hosts: localhost
+  gather_facts: no
+  vars:
+    fmc_url: "https://cisco-cbeye--sc6nui.app.eu.cdo.cisco.com"
+    domain_uuid: "e276abec-e0f2-11e3-8169-6d9ed49b625f"
+    api_token: "{{ lookup('env', 'api_token') }}"
+  tasks:
+    - name: Get list of devices from FMC
+      uri:
+        url: "{{ fmc_url }}/api/fmc_config/v1/domain/{{ domain_uuid }}/devices/devicerecords"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+          Accept: "application/json"
+        return_content: yes
+        validate_certs: no
+      register: fmc_devices
+
+    - name: Extract device id using jq
+      shell: |
+        echo '{{ fmc_devices.content }}' | jq -r '.items[] | select(.name=="{{ target_pod }}") | .id'
+      register: device_id_output
+      changed_when: false
+
+    - name: Debug device id
+      debug:
+        msg: "Device id for {{ target_pod }} is {{ device_id_output.stdout }}"
+
+    - name: Get physical interfaces for the device (container UUID)
+      uri:
+        url: "{{ fmc_url }}/api/fmc_config/v1/domain/{{ domain_uuid }}/devices/devicerecords/{{ device_id_output.stdout }}/physicalinterfaces"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+          Accept: "application/json"
+        return_content: yes
+        validate_certs: no
+      register: phys_int_resp
+
+    - name: Extract GigabitEthernet0/0 id using jq
+      shell: |
+        echo '{{ phys_int_resp.content }}' | jq -r '.items[] | select(.name=="GigabitEthernet0/0") | .id'
+      register: gig0_0_id
+      changed_when: false
+
+    - name: Extract GigabitEthernet0/1 id using jq
+      shell: |
+        echo '{{ phys_int_resp.content }}' | jq -r '.items[] | select(.name=="GigabitEthernet0/1") | .id'
+      register: gig0_1_id
+      changed_when: false
+
+    - name: Debug physical interface ids
+      debug:
+        msg:
+          - "GigabitEthernet0/0 id: {{ gig0_0_id.stdout }}"
+          - "GigabitEthernet0/1 id: {{ gig0_1_id.stdout }}"
+
+    - name: Build interface list for update
+      set_fact:
+        interfaces_to_update:
+          - name: "GigabitEthernet0/0"
+            ifname: "Datacenter"
+            id: "{{ gig0_0_id.stdout }}"
+            ip_address: "172.16.1.2"
+            ip_netmask: "30"
+          - name: "GigabitEthernet0/1"
+            ifname: "Branch"
+            id: "{{ gig0_1_id.stdout }}"
+            ip_address: "172.16.0.2"
+            ip_netmask: "30"
+
+    - name: Update configuration of each physical interface via PUT
+      uri:
+        url: "{{ fmc_url }}/api/fmc_config/v1/domain/{{ domain_uuid }}/devices/devicerecords/{{ device_id_output.stdout }}/physicalinterfaces/{{ item.id }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+          Accept: "application/json"
+          Content-Type: "application/json"
+        body: "{{ {
+          'type': 'PhysicalInterface',
+          'nveOnly': false,
+          'hardware': { 'speed': 'AUTO', 'duplex': 'AUTO' },
+          'mode': 'NONE',
+          'id': item.id,
+          'MTU': 1500,
+          'enabled': true,
+          'name': item.name,
+          'ifname': item.ifname,
+          'managementOnly': false,
+          'ipv4': { 'static': { 'address': item.ip_address, 'netmask': item.ip_netmask } }
+        } | to_json }}"
+        status_code: 200
+        return_content: yes
+        validate_certs: no
+      loop: "{{ interfaces_to_update }}"
+      register: interface_update_results
+
+    - name: Show update results for all interfaces
+      debug:
+        var: interface_update_results
+
+    - name: Add static route for interface "Branch"
+      uri:
+        url: "{{ fmc_url }}/api/fmc_config/v1/domain/{{ domain_uuid }}/devices/devicerecords/{{ device_id_output.stdout }}/routing/ipv4staticroutes"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+          Accept: "application/json"
+          Content-Type: "application/json"
+        body: |
+          {
+            "interfaceName": "Branch",
+            "selectedNetworks": [
+              {
+                "type": "Network",
+                "overridable": false,
+                "id": "06E6F43C-465D-0ed3-0000-004294985130",
+                "name": "Branch"
+              }
+            ],
+            "gateway": {
+              "object": {
+                "type": "Host",
+                "overridable": false,
+                "id": "06E6F43C-465D-0ed3-0000-004294985170",
+                "name": "branch-catalyst-host"
+              }
+            },
+            "metricValue": 1,
+            "type": "IPv4StaticRoute",
+            "isTunneled": false
+          }
+        status_code: 201
+        return_content: yes
+        validate_certs: no
+      register: static_route_branch
+      ignore_errors: true
+
+    - name: Show static route creation result for Branch
+      debug:
+        msg: "Static route for Branch created: {{ static_route_branch.content }}"
+
+    - name: Add static route for interface "Datacenter"
+      uri:
+        url: "{{ fmc_url }}/api/fmc_config/v1/domain/{{ domain_uuid }}/devices/devicerecords/{{ device_id_output.stdout }}/routing/ipv4staticroutes"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+          Accept: "application/json"
+          Content-Type: "application/json"
+        body: |
+          {
+            "interfaceName": "Datacenter",
+            "selectedNetworks": [
+              {
+                "type": "Network",
+                "overridable": false,
+                "id": "06E6F43C-465D-0ed3-0000-004294985039",
+                "name": "Datacenter"
+              }
+            ],
+            "gateway": {
+              "object": {
+                "type": "Host",
+                "overridable": false,
+                "id": "06E6F43C-465D-0ed3-0000-004294985085",
+                "name": "datacenter-nexus-host"
+              }
+            },
+            "metricValue": 1,
+            "type": "IPv4StaticRoute",
+            "isTunneled": false,
+            "id": "06E6F43C-465D-0ed3-0000-004294985195"
+          }
+        status_code: 201
+        return_content: yes
+        validate_certs: no
+      register: static_route_datacenter
+      ignore_errors: true
+
+    - name: Show static route creation result for Datacenter
+      debug:
+        msg: "Static route for Datacenter created: {{ static_route_datacenter.content }}"
+
+    - name: Deploy configuration
+      uri:
+        url: "{{ fmc_url }}/api/fmc_config/v1/domain/{{ domain_uuid }}/deployment/deploymentrequests"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+          Accept: "application/json"
+          Content-Type: "application/json"
+        body: "{{ {
+          'type': 'DeploymentRequest',
+          'version': '1457566762351',
+          'forceDeploy': true,
+          'ignoreWarning': true,
+          'deviceList': [ device_id_output.stdout ],
+          'deploymentNote': 'GITLAB_PUSH'
+        } | to_json }}"
+        status_code: 202
+        return_content: yes
+        validate_certs: no
+      register: deployment_result
+
+    - name: Show deployment result
+      debug:
+        msg: "Deployment result: {{ deployment_result.content }}"

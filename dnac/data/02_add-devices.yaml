@@ -1,0 +1,4 @@
+---
+site:
+  - name: "Global/POD01/CiscoLive"
+    ipAddress: 10.100.80.11

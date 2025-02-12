@@ -1,0 +1,54 @@
+---
+- hosts: ndfc_servers
+  gather_facts: false
+  tasks:
+    - name: Set sentitive variables
+      ansible.builtin.set_fact:
+        api_token: "{{ lookup('env', 'api_token') }}"
+
+    - name: Get device details from NetBox
+      uri:
+          url: "http://ciscolive-netbox.berlab.de/api/dcim/devices/?name={{ nexus_switch }}"
+          method: GET
+          return_content: yes
+          headers:
+              accept: "application/json"
+              Authorization: "Token {{ api_token }}"
+      register: device
+
+    - debug: var=device
+
+    - name: Get intended state from NetBox based on device ID
+      uri:
+          url: "http://ciscolive-netbox.berlab.de/api/dcim/devices/{{ device.json.results.0['id'] }}/render-config/"
+          method: POST
+          return_content: yes
+          headers:
+              accept: "application/json"
+              Authorization: "Token {{ api_token }}"
+      register: intended_config
+
+    - debug: var=intended_config
+
+    - name: Extract and format the config content
+      ansible.builtin.set_fact:
+        formatted_config: "{{ intended_config.json.content | replace('\\n', '\n') }}"
+
+    - name: Debug formatted config
+      debug:
+        var: formatted_config
+
+    - name: Create policy including required variables
+      cisco.dcnm.dcnm_policy:
+        fabric: "{{ fabric_name }}"
+        state: merged
+        deploy: true
+        config:
+          - name: switch_freeform
+            create_additional_policy: true
+            priority: 400
+            description: ANSIBLE_DEPLOYMENT
+            policy_vars: 
+              CONF: "{{ formatted_config }}"
+          - switch:
+              - ip: "10.100.80.10"

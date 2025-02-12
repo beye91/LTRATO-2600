@@ -1,0 +1,9 @@
+---
+- hosts: dnac_servers
+  gather_facts: false
+  tasks:
+    - name: Get all Site V2
+      cisco.dnac.network_device_info:
+      register: result
+
+    - debug: var=result

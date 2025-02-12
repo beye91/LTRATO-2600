@@ -1,0 +1,25 @@
+---
+fabric_data:
+  switches: 
+    - inventory: '{
+                  "maxHops": "0",
+                  "seedIP": "10.100.80.10",
+                  "cdpSecondTimeout": 5,
+                  "snmpV3AuthProtocol": 0,
+                  "username": "",
+                  "password": "",
+                  "preserveConfig": true,
+                  "discoveryCredForLan": false,
+                  "switches": [
+                      {
+                          "ipaddr": "10.100.80.10",
+                          "sysName": "POD01-N9KV-01",
+                          "deviceIndex": "POD01-N9KV-01(92FG9Q98L1Z)",
+                          "platform": "N9K-C9300v",
+                          "version": "10.3(1)",
+                          "serialNumber": "92FG9Q98L1Z",
+                          "vdcId": 0,
+                          "vdcMac": null
+                      }
+                  ]
+                  }'

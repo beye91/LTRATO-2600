@@ -1,0 +1,22 @@
+---
+- name: Retrieve Devices from Cloud-Delivered FMC
+  hosts: localhost
+  gather_facts: no
+  vars:
+    api_token: "{{ lookup('env', 'api_token') }}"
+
+  tasks:
+
+    - name: Retrieve Device List
+      uri:
+        url: "https://eu.manage.security.cisco.com/api/rest/v1/inventory/devices?limit=50&offset=0"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+          Content-Type: "application/json"
+        validate_certs: yes
+      register: device_response
+
+    - name: API Response
+      debug:
+        var: "{{ device_response.json.count }}"
