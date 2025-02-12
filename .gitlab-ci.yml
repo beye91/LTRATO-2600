@@ -1,0 +1,105 @@
+stages:
+  - deploy_config_dnac
+  - deploy_config_ndfc
+  - deploy_config_scc
+
+deploy_config_dnac:
+  stage: deploy_config_dnac
+  tags:
+    - docker-runner
+  image: cbeye592/ltrato-2600:dnac
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: https://10.49.232.225
+  secrets:
+    DNAC_HOST:
+      vault: DNAC/DNAC_HOST@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+    DNAC_VERIFY:
+      vault: DNAC/DNAC_VERIFY@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+    DNAC_USERNAME:
+      vault: DNAC/DNAC_USERNAME@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+    DNAC_PASSWORD:
+      vault: DNAC/DNAC_PASSWORD@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+    api_token:
+      vault: NETBOX/api_token@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+  before_script:
+    - source /root/ansible/bin/activate
+    - chmod -R 700 dnac
+    - cd dnac
+  script:
+    - ansible-playbook -i hosts playbooks/03_deploy-template.yml --extra-vars "device_name=POD01-CAT8KV-01"
+
+deploy_config_ndfc:
+  stage: deploy_config_ndfc
+  tags:
+    - docker-runner
+  image: cbeye592/ltrato-2600:ndfc
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: https://10.49.232.225
+  secrets:
+    ansible_user:
+      vault: NDFC/ansible_user@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+    ansible_password:
+      vault: NDFC/ansible_password@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+    DEVICE_USER:
+      vault: NDFC/DEVICE_USER@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+    DEVICE_PASSWORD:
+      vault: NDFC/DEVICE_PASSWORD@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+    api_token:
+      vault: NETBOX/api_token@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+  before_script:
+    - source /root/ansible/bin/activate
+    - chmod -R 700 ndfc
+    - cd ndfc
+    - echo "" >> hosts
+    - echo "ansible_user=$ansible_user" >> hosts
+    - echo "ansible_password=$ansible_password" >> hosts
+  script:
+    - "sed -i 's/\"username\": \"\",/\"username\": \"'${DEVICE_USER}'\",/g' data/01_add-devices.yaml"
+    - "sed -i 's/\"password\": \"\",/\"password\": \"'${DEVICE_PASSWORD}'\",/g' data/01_add-devices.yaml"
+    - ansible-playbook playbooks/02_deploy-template.yml --extra-vars "nexus_switch=POD01-N9KV-01" --extra-vars "fabric_name=pod01"
+
+configure_ftd_devices:
+  stage: deploy_config_scc
+  tags:
+    - docker-runner
+  image: cbeye592/ltrato-2600:scc
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: https://10.49.232.225
+  secrets:
+    api_token:
+      vault: SCC/api_token@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+    cdo_host:
+      vault: SCC/cdo_host@pod01
+      file: false
+      token: $VAULT_ID_TOKEN
+  before_script:
+    - source /root/ansible/bin/activate
+    - chmod -R 700 ndfc
+    - cd scc
+  script:
+    - ansible-playbook playbooks/01_configure-ftd.yml --extra-vars "target_pod=pod01"
