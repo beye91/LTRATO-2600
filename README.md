@@ -6,7 +6,7 @@ By leveraging open-source large language models (LLMs), operators can deploy adv
 
 During the lab execution, you will work with:
 
-** GitLab, Docker, Ansible for Infrastructure as Code, pyATS, Splunk
-** NetBox, ServiceNow
-** Cisco Nexus Dashboard Fabric Controller, Cisco Catalyst Center, Cisco Security Cloud Control
-** Local large language model (LLM)
+* GitLab, Docker, Ansible for Infrastructure as Code, pyATS, Splunk
+* NetBox, ServiceNow
+* Cisco Nexus Dashboard Fabric Controller, Cisco Catalyst Center, Cisco Security Cloud Control
+* Local large language model (LLM)
